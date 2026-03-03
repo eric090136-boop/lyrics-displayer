@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBS YouTube 字幕助手 (專業版)</title>
+    <title>OBS 歌回字幕助手 (三合一增強版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .obs-mode .control-panel { display: none; }
@@ -14,68 +14,83 @@
             font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
         }
         #player-container { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        .tab-btn.active { border-bottom: 3px solid #6366f1; color: #6366f1; }
     </style>
 </head>
-<body id="mainBody" class="bg-[#00FF00] transition-colors duration-500 overflow-hidden">
+<body id="mainBody" class="bg-[#00FF00] transition-colors duration-500 overflow-hidden text-sm">
 
     <div id="player-container"></div>
 
-    <div class="control-panel p-6 bg-white/95 shadow-2xl m-4 rounded-2xl border border-gray-200 sticky top-0 z-50 max-w-5xl mx-auto">
+    <div class="control-panel p-6 bg-white/95 shadow-2xl m-4 rounded-2xl border border-gray-200 sticky top-0 z-50 max-w-5xl mx-auto overflow-y-auto max-h-[90vh]">
         <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl font-black text-gray-800 tracking-tight">🎙️ 歌回/直播 CC 字幕同步器</h1>
-            <div id="statusTag" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">API 載入中...</div>
+            <h1 class="text-xl font-black text-gray-800">🎙️ 歌回/直播字幕助手 (全功能版)</h1>
+            <div id="statusTag" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">API 載入中</div>
         </div>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700">1. YouTube 連結 (自動抓取)</label>
-                    <div class="flex gap-2 mt-1">
-                        <input type="text" id="ytUrl" placeholder="貼上影片網址..." class="flex-1 rounded-lg border-gray-300 border p-2 text-sm shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <button id="btnFetch" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition">抓取字幕</button>
+                <div class="flex border-b border-gray-100 mb-2">
+                    <button onclick="switchTab('auto')" id="tab-auto" class="tab-btn active px-4 py-2 font-bold transition">YouTube 抓取</button>
+                    <button onclick="switchTab('manual')" id="tab-manual" class="tab-btn px-4 py-2 font-bold transition">手動貼入/上傳</button>
+                </div>
+
+                <div id="panel-auto" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">YouTube 網址</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="ytUrl" placeholder="貼上影片網址..." class="flex-1 rounded-lg border-gray-300 border p-2 shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <button id="btnFetch" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition">抓取</button>
+                        </div>
+                    </div>
+                    <div id="trackSelectorArea" class="hidden">
+                        <label class="block text-xs font-bold text-indigo-600 mb-1">選擇 CC 語言：</label>
+                        <select id="trackSelect" class="block w-full rounded-lg border-indigo-300 border p-2 bg-indigo-50 cursor-pointer"></select>
                     </div>
                 </div>
 
-                <div id="trackSelectorArea" class="hidden animate-pulse">
-                    <label class="block text-sm font-bold text-gray-700 text-indigo-600">偵測到字幕！請選擇語言：</label>
-                    <select id="trackSelect" class="mt-1 block w-full rounded-lg border-indigo-300 border p-2 bg-indigo-50 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"></select>
-                </div>
-
-                <div class="pt-2 border-t border-gray-100">
-                    <label class="block text-sm font-bold text-gray-500">2. 備案：手動上傳字幕 (.srt / .vtt)</label>
-                    <input type="file" id="fileInput" accept=".srt,.vtt" class="mt-1 block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200">
+                <div id="panel-manual" class="hidden space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">直接貼入歌詞 (支援 LRC [00:01.23] 或 SRT 格式)</label>
+                        <textarea id="manualText" rows="4" placeholder="[00:10.00] 範例歌詞 A&#10;[00:15.50] 範例歌詞 B" class="w-full rounded-lg border-gray-300 border p-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none font-mono"></textarea>
+                        <button id="btnApplyManual" class="mt-2 w-full py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition">應用手動歌詞</button>
+                    </div>
+                    <div class="border-t pt-2">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">上傳字幕檔 (.srt / .vtt)</label>
+                        <input type="file" id="fileInput" accept=".srt,.vtt" class="block w-full text-xs text-gray-400 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200">
+                    </div>
                 </div>
             </div>
 
             <div class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-bold text-gray-700">字體大小 (px)</label>
-                        <input type="number" id="fontSize" value="80" class="mt-1 block w-full rounded-lg border-gray-300 border p-2 text-sm">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">字體大小 (px)</label>
+                        <input type="number" id="fontSize" value="80" class="block w-full rounded-lg border-gray-300 border p-2 outline-none">
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-gray-700">色鍵背景</label>
-                        <select id="bgColor" class="mt-1 block w-full rounded-lg border-gray-300 border p-2 text-sm">
+                        <label class="block text-sm font-bold text-gray-700">去背底色</label>
+                        <select id="bgColor" class="block w-full rounded-lg border-gray-300 border p-2">
                             <option value="#00FF00">綠幕 (Green)</option>
                             <option value="#0000FF">藍幕 (Blue)</option>
-                            <option value="#000000">黑色 (Black)</option>
+                            <option value="#000000">純黑 (Black)</option>
                         </select>
                     </div>
                 </div>
                 
-                <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <span class="text-xs font-mono text-gray-500" id="timerDisplay">00:00.0</span>
-                    <button id="toggleOBS" class="px-6 py-2 bg-gray-900 text-white rounded-lg font-black hover:bg-black transition-all shadow-lg text-sm">
+                <div class="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                    <span class="text-xs font-mono text-gray-400" id="timerDisplay">00:00.0</span>
+                    <button id="toggleOBS" class="px-8 py-3 bg-gray-900 text-white rounded-xl font-black hover:bg-black transition-all shadow-lg transform hover:scale-105">
                         進入 OBS 擷取模式 (Esc 退出)
                     </button>
                 </div>
+                <p class="text-[10px] text-gray-400 text-center">※ 注意：由於瀏覽器安全限制，載入網址後請確保在頁面任一處點擊一次，以授權自動播放同步。</p>
             </div>
         </div>
     </div>
 
     <div class="subtitle-display flex items-center justify-center min-h-[60vh] px-12 text-center">
         <div id="subtitleText" class="subtitle-text font-black text-white" style="font-size: 80px;">
-            請載入影片或上傳字幕
+            等待載入...
         </div>
     </div>
 
@@ -84,128 +99,128 @@
         let player;
         let syncInterval;
 
-        // --- 1. YouTube Player API 初始化 ---
+        // --- 標籤切換邏輯 ---
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-'+tab).classList.add('active');
+            document.getElementById('panel-auto').classList.toggle('hidden', tab !== 'auto');
+            document.getElementById('panel-manual').classList.toggle('hidden', tab !== 'manual');
+        }
+
+        // --- YouTube API 初始化 ---
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         document.head.appendChild(tag);
+        function onYouTubeIframeAPIReady() { updateStatus("API 已就緒", "bg-blue-100", "text-blue-600"); }
 
-        function onYouTubeIframeAPIReady() {
-            updateStatus("API 就緒", "bg-blue-100", "text-blue-600");
+        // --- 核心功能：解析手動貼入內容 ---
+        document.getElementById('btnApplyManual').onclick = () => {
+            const text = document.getElementById('manualText').value;
+            if (!text.trim()) return alert("請貼入內容");
+            
+            // 判斷是 LRC 還是 SRT 格式
+            if (text.includes('[') && text.includes(']')) {
+                subtitles = parseLRC(text);
+            } else {
+                subtitles = parseSRT(text);
+            }
+            
+            if (subtitles.length > 0) {
+                alert(`解析成功：${subtitles.length} 條歌詞`);
+                updateStatus("手動歌詞就緒", "bg-purple-100", "text-purple-600");
+                // 同時也初始化播放器以進行同步（如果網址列有東西）
+                const videoId = extractVideoId(document.getElementById('ytUrl').value);
+                if(videoId) initPlayer(videoId);
+            } else {
+                alert("解析失敗，請確認格式。");
+            }
+        };
+
+        function parseLRC(lrcText) {
+            const lines = lrcText.split('\n');
+            const result = [];
+            const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+
+            lines.forEach(line => {
+                const parts = line.split(']');
+                const content = parts.pop().trim();
+                let match;
+                while ((match = timeRegex.exec(line)) !== null) {
+                    const sec = parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / (match[3].length === 3 ? 1000 : 100);
+                    result.push({ start: sec, end: sec + 4, text: content });
+                }
+            });
+            // 自動計算結束時間 (下一句的開始即為這一句的結束)
+            result.sort((a, b) => a.start - b.start);
+            for (let i = 0; i < result.length - 1; i++) {
+                result[i].end = result[i+1].start;
+            }
+            return result;
         }
 
-        // --- 2. 自動抓取邏輯 (含 Proxy 錯誤處理) ---
+        // --- 其他原有的抓取與解析邏輯 (SRT/Proxy/Sync) ---
+        // (略同前版，確保程式完整性)
         document.getElementById('btnFetch').onclick = async () => {
             const url = document.getElementById('ytUrl').value;
             const videoId = extractVideoId(url);
             if (!videoId) return alert("無效網址");
-
             setLoading(true);
             try {
-                // 嘗試抓取字幕清單
                 const metaUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
                 const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(metaUrl)}`;
-                
                 const response = await fetch(proxyUrl);
                 const data = await response.json();
-                
-                if (!data.contents) throw new Error("無法從代理伺服器取得資料");
-
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(data.contents, "text/xml");
                 const tracks = xmlDoc.getElementsByTagName('track');
-
-                if (tracks.length === 0) throw new Error("此影片無 CC 字幕，請嘗試手動上傳");
-
+                if (tracks.length === 0) throw new Error("無自動字幕");
                 const trackSelect = document.getElementById('trackSelect');
                 trackSelect.innerHTML = "";
-                Array.from(tracks).forEach(track => {
-                    const option = new Option(`${track.getAttribute('lang_original')} (${track.getAttribute('lang_code')})`, track.getAttribute('lang_code'));
-                    trackSelect.add(option);
-                });
-
+                Array.from(tracks).forEach(t => trackSelect.add(new Option(`${t.getAttribute('lang_original')} (${t.getAttribute('lang_code')})`, t.getAttribute('lang_code'))));
                 document.getElementById('trackSelectorArea').classList.remove('hidden');
                 loadSubtitleTrack(videoId, tracks[0].getAttribute('lang_code'));
                 initPlayer(videoId);
-
             } catch (err) {
-                console.error(err);
-                alert(`自動抓取失敗: ${err.message}\n建議改用手動上傳功能。`);
-                initPlayer(videoId); // 雖然字幕抓不到，但仍載入影片以供同步
-            } finally {
-                setLoading(false);
-            }
+                alert("抓取失敗，請改用手動貼入模式。");
+                initPlayer(videoId);
+            } finally { setLoading(false); }
         };
 
         async function loadSubtitleTrack(videoId, lang) {
-            updateStatus("同步字幕中...", "bg-yellow-100", "text-yellow-600");
             const subUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=srv3`;
             const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(subUrl)}`;
-            
-            try {
-                const response = await fetch(proxyUrl);
-                const data = await response.json();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-                const paragraphs = xmlDoc.getElementsByTagName('p');
-
-                subtitles = Array.from(paragraphs).map(p => ({
-                    start: parseInt(p.getAttribute('t')) / 1000,
-                    end: (parseInt(p.getAttribute('t')) + (parseInt(p.getAttribute('d')) || 2000)) / 1000,
-                    text: p.textContent
-                }));
-                updateStatus("同步成功", "bg-green-100", "text-green-600");
-            } catch (e) {
-                alert("載入具體字幕內容失敗");
-            }
+            const response = await fetch(proxyUrl);
+            const data = await response.json();
+            const xmlDoc = new DOMParser().parseFromString(data.contents, "text/xml");
+            const paragraphs = xmlDoc.getElementsByTagName('p');
+            subtitles = Array.from(paragraphs).map(p => ({
+                start: parseInt(p.getAttribute('t')) / 1000,
+                end: (parseInt(p.getAttribute('t')) + (parseInt(p.getAttribute('d')) || 2000)) / 1000,
+                text: p.textContent
+            }));
+            updateStatus("同步中", "bg-green-100", "text-green-600");
         }
 
-        // --- 3. 手動上傳邏輯 ---
-        document.getElementById('fileInput').onchange = (e) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                subtitles = parseSRT(event.target.result);
-                updateStatus("手動字幕就緒", "bg-purple-100", "text-purple-600");
-                alert(`手動字幕載入成功：${subtitles.length} 條`);
-            };
-            reader.readAsText(e.target.files[0]);
-        };
-
-        function parseSRT(data) {
+        // 基本工具函數
+        function parseSRT(d) {
             const regex = /(\d+)\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}) --> (\d{2}:\d{2}:\d{2}[,\.]\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
-            let res = []; let match;
-            const clean = data.replace(/\r/g, "");
-            while ((match = regex.exec(clean)) !== null) {
-                res.push({
-                    start: timeToSeconds(match[2]),
-                    end: timeToSeconds(match[3]),
-                    text: match[4].replace(/\n/g, "<br>")
-                });
+            let res = []; let m;
+            while ((m = regex.exec(d.replace(/\r/g, ""))) !== null) {
+                res.push({ start: t2s(m[2]), end: t2s(m[3]), text: m[4].replace(/\n/g, "<br>") });
             }
             return res;
         }
+        function t2s(t) { const p = t.replace(',', '.').split(':'); return parseFloat(p[0]) * 3600 + parseFloat(p[1]) * 60 + parseFloat(p[2]); }
 
-        function timeToSeconds(t) {
-            const p = t.replace(',', '.').split(':');
-            return parseFloat(p[0]) * 3600 + parseFloat(p[1]) * 60 + parseFloat(p[2]);
-        }
-
-        // --- 4. 同步與控制 ---
         function initPlayer(videoId) {
-            if (player) {
-                player.loadVideoById(videoId);
-            } else {
+            if (player) { player.loadVideoById(videoId); } 
+            else {
                 player = new YT.Player('player-container', {
                     videoId: videoId,
-                    events: {
-                        'onStateChange': (e) => {
-                            if (e.data == YT.PlayerState.PLAYING) startSync();
-                            else stopSync();
-                        }
-                    }
+                    events: { 'onStateChange': (e) => { if (e.data == YT.PlayerState.PLAYING) startSync(); else stopSync(); } }
                 });
             }
         }
-
         function startSync() {
             clearInterval(syncInterval);
             syncInterval = setInterval(() => {
@@ -215,33 +230,28 @@
                 updateTimerDisplay(time);
             }, 100);
         }
-
         function stopSync() { clearInterval(syncInterval); }
-
         function updateTimerDisplay(sec) {
-            const m = Math.floor(sec / 60);
-            const s = (sec % 60).toFixed(1);
+            const m = Math.floor(sec / 60); const s = (sec % 60).toFixed(1);
             document.getElementById('timerDisplay').innerText = `${m}:${s.padStart(4, '0')}`;
         }
-
         function extractVideoId(url) {
             const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            const match = url.match(regExp);
-            return (match && match[2].length === 11) ? match[2] : url;
+            const m = url.match(regExp); return (m && m[2].length === 11) ? m[2] : url;
         }
-
-        function updateStatus(text, bg, color) {
+        function updateStatus(t, b, c) {
             const tag = document.getElementById('statusTag');
-            tag.innerText = text;
-            tag.className = `px-3 py-1 rounded-full text-xs font-bold ${bg} ${color}`;
+            tag.innerText = t; tag.className = `px-3 py-1 rounded-full text-xs font-bold ${b} ${c}`;
         }
-
         function setLoading(l) {
-            document.getElementById('btnFetch').innerText = l ? "抓取中..." : "抓取字幕";
+            document.getElementById('btnFetch').innerText = l ? "中..." : "抓取";
             document.getElementById('btnFetch').disabled = l;
         }
-
-        // 樣式控制
+        document.getElementById('fileInput').onchange = (e) => {
+            const r = new FileReader();
+            r.onload = (ev) => { subtitles = parseSRT(ev.target.result); updateStatus("檔案就緒", "bg-purple-100", "text-purple-600"); };
+            r.readAsText(e.target.files[0]);
+        };
         document.getElementById('bgColor').onchange = (e) => document.getElementById('mainBody').style.backgroundColor = e.target.value;
         document.getElementById('fontSize').oninput = (e) => document.getElementById('subtitleText').style.fontSize = e.target.value + 'px';
         document.getElementById('toggleOBS').onclick = () => document.getElementById('mainBody').classList.add('obs-mode');

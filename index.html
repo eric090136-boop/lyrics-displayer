@@ -3,19 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBS YouTube 字幕自動抓取器</title>
+    <title>OBS YouTube 字幕助手 (專業版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .obs-mode .control-panel { display: none; }
         .obs-mode .subtitle-display { height: 100vh; display: flex; align-items: center; justify-content: center; }
         .subtitle-text {
             text-shadow: -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000, 5px 5px 15px rgba(0,0,0,0.9);
-            line-height: 1.2;
+            line-height: 1.3;
             font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
         }
-        #player-container { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        .loading-spinner { border-top-color: #6366f1; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #player-container { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body id="mainBody" class="bg-[#00FF00] transition-colors duration-500 overflow-hidden">
@@ -24,25 +22,28 @@
 
     <div class="control-panel p-6 bg-white/95 shadow-2xl m-4 rounded-2xl border border-gray-200 sticky top-0 z-50 max-w-5xl mx-auto">
         <div class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-black text-gray-800 tracking-tight">🎙️ 歌回/直播 CC 字幕助手</h1>
-            <div id="statusTag" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">API 未就緒</div>
+            <h1 class="text-xl font-black text-gray-800 tracking-tight">🎙️ 歌回/直播 CC 字幕同步器</h1>
+            <div id="statusTag" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">API 載入中...</div>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-bold text-gray-700">YouTube 影片連結</label>
+                    <label class="block text-sm font-bold text-gray-700">1. YouTube 連結 (自動抓取)</label>
                     <div class="flex gap-2 mt-1">
-                        <input type="text" id="ytUrl" placeholder="貼上網址，例如: https://www.youtube.com/watch?v=..." class="flex-1 rounded-lg border-gray-300 border p-2 text-sm shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <button id="btnFetch" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition flex items-center shadow-lg">
-                            <span id="btnText">抓取字幕</span>
-                        </button>
+                        <input type="text" id="ytUrl" placeholder="貼上影片網址..." class="flex-1 rounded-lg border-gray-300 border p-2 text-sm shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <button id="btnFetch" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition">抓取字幕</button>
                     </div>
                 </div>
 
-                <div id="trackSelectorArea" class="hidden">
-                    <label class="block text-sm font-bold text-gray-700">選擇字幕語言</label>
-                    <select id="trackSelect" class="mt-1 block w-full rounded-lg border-gray-300 border p-2 bg-gray-50 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"></select>
+                <div id="trackSelectorArea" class="hidden animate-pulse">
+                    <label class="block text-sm font-bold text-gray-700 text-indigo-600">偵測到字幕！請選擇語言：</label>
+                    <select id="trackSelect" class="mt-1 block w-full rounded-lg border-indigo-300 border p-2 bg-indigo-50 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"></select>
+                </div>
+
+                <div class="pt-2 border-t border-gray-100">
+                    <label class="block text-sm font-bold text-gray-500">2. 備案：手動上傳字幕 (.srt / .vtt)</label>
+                    <input type="file" id="fileInput" accept=".srt,.vtt" class="mt-1 block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200">
                 </div>
             </div>
 
@@ -62,16 +63,19 @@
                     </div>
                 </div>
                 
-                <button id="toggleOBS" class="w-full py-3 bg-gray-900 text-white rounded-xl font-black hover:bg-black transition-all transform hover:scale-[1.02] shadow-xl">
-                    進入 OBS 擷取模式 (Esc 退出)
-                </button>
+                <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <span class="text-xs font-mono text-gray-500" id="timerDisplay">00:00.0</span>
+                    <button id="toggleOBS" class="px-6 py-2 bg-gray-900 text-white rounded-lg font-black hover:bg-black transition-all shadow-lg text-sm">
+                        進入 OBS 擷取模式 (Esc 退出)
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="subtitle-display flex items-center justify-center min-h-[60vh] px-12 text-center">
         <div id="subtitleText" class="subtitle-text font-black text-white" style="font-size: 80px;">
-            請輸入網址並點擊抓取
+            請載入影片或上傳字幕
         </div>
     </div>
 
@@ -80,87 +84,112 @@
         let player;
         let syncInterval;
 
-        // 1. 載入 YouTube IFrame API
+        // --- 1. YouTube Player API 初始化 ---
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         document.head.appendChild(tag);
 
         function onYouTubeIframeAPIReady() {
-            updateStatus("API 已就緒", "bg-blue-100", "text-blue-600");
+            updateStatus("API 就緒", "bg-blue-100", "text-blue-600");
         }
 
-        // 2. 抓取 YouTube 字幕核心邏輯
+        // --- 2. 自動抓取邏輯 (含 Proxy 錯誤處理) ---
         document.getElementById('btnFetch').onclick = async () => {
             const url = document.getElementById('ytUrl').value;
             const videoId = extractVideoId(url);
-            if (!videoId) return alert("請輸入有效的 YouTube 網址");
+            if (!videoId) return alert("無效網址");
 
-            setBtnLoading(true);
+            setLoading(true);
             try {
-                // 使用官方 timedtext 介面的 metadata 代理 (這是一個不需要 API Key 的技巧)
+                // 嘗試抓取字幕清單
                 const metaUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`;
-                // 注意：在瀏覽器直接 fetch 會被 CORS 擋住，這裡我們使用一個公開的 Proxy 服務
                 const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(metaUrl)}`;
                 
                 const response = await fetch(proxyUrl);
                 const data = await response.json();
                 
+                if (!data.contents) throw new Error("無法從代理伺服器取得資料");
+
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(data.contents, "text/xml");
                 const tracks = xmlDoc.getElementsByTagName('track');
 
-                if (tracks.length === 0) throw new Error("此影片沒有 CC 字幕");
+                if (tracks.length === 0) throw new Error("此影片無 CC 字幕，請嘗試手動上傳");
 
                 const trackSelect = document.getElementById('trackSelect');
                 trackSelect.innerHTML = "";
                 Array.from(tracks).forEach(track => {
-                    const langCode = track.getAttribute('lang_code');
-                    const langName = track.getAttribute('lang_original');
-                    const option = new Option(`${langName} (${langCode})`, langCode);
+                    const option = new Option(`${track.getAttribute('lang_original')} (${track.getAttribute('lang_code')})`, track.getAttribute('lang_code'));
                     trackSelect.add(option);
                 });
 
                 document.getElementById('trackSelectorArea').classList.remove('hidden');
-                
-                // 預選第一個並載入
                 loadSubtitleTrack(videoId, tracks[0].getAttribute('lang_code'));
                 initPlayer(videoId);
 
             } catch (err) {
-                alert(err.message);
+                console.error(err);
+                alert(`自動抓取失敗: ${err.message}\n建議改用手動上傳功能。`);
+                initPlayer(videoId); // 雖然字幕抓不到，但仍載入影片以供同步
             } finally {
-                setBtnLoading(false);
+                setLoading(false);
             }
         };
 
-        // 載入具體字幕內容
         async function loadSubtitleTrack(videoId, lang) {
-            updateStatus("正在下載字幕...", "bg-yellow-100", "text-yellow-600");
+            updateStatus("同步字幕中...", "bg-yellow-100", "text-yellow-600");
             const subUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=srv3`;
             const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(subUrl)}`;
             
-            const response = await fetch(proxyUrl);
-            const data = await response.json();
-            
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(data.contents, "text/xml");
-            const paragraphs = xmlDoc.getElementsByTagName('p');
+            try {
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+                const paragraphs = xmlDoc.getElementsByTagName('p');
 
-            subtitles = Array.from(paragraphs).map(p => ({
-                start: parseInt(p.getAttribute('t')) / 1000,
-                end: (parseInt(p.getAttribute('t')) + (parseInt(p.getAttribute('d')) || 2000)) / 1000,
-                text: p.textContent
-            }));
-
-            updateStatus("字幕已同步", "bg-green-100", "text-green-600");
+                subtitles = Array.from(paragraphs).map(p => ({
+                    start: parseInt(p.getAttribute('t')) / 1000,
+                    end: (parseInt(p.getAttribute('t')) + (parseInt(p.getAttribute('d')) || 2000)) / 1000,
+                    text: p.textContent
+                }));
+                updateStatus("同步成功", "bg-green-100", "text-green-600");
+            } catch (e) {
+                alert("載入具體字幕內容失敗");
+            }
         }
 
-        document.getElementById('trackSelect').onchange = (e) => {
-            const videoId = extractVideoId(document.getElementById('ytUrl').value);
-            loadSubtitleTrack(videoId, e.target.value);
+        // --- 3. 手動上傳邏輯 ---
+        document.getElementById('fileInput').onchange = (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                subtitles = parseSRT(event.target.result);
+                updateStatus("手動字幕就緒", "bg-purple-100", "text-purple-600");
+                alert(`手動字幕載入成功：${subtitles.length} 條`);
+            };
+            reader.readAsText(e.target.files[0]);
         };
 
-        // 3. YouTube 播放器同步
+        function parseSRT(data) {
+            const regex = /(\d+)\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}) --> (\d{2}:\d{2}:\d{2}[,\.]\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
+            let res = []; let match;
+            const clean = data.replace(/\r/g, "");
+            while ((match = regex.exec(clean)) !== null) {
+                res.push({
+                    start: timeToSeconds(match[2]),
+                    end: timeToSeconds(match[3]),
+                    text: match[4].replace(/\n/g, "<br>")
+                });
+            }
+            return res;
+        }
+
+        function timeToSeconds(t) {
+            const p = t.replace(',', '.').split(':');
+            return parseFloat(p[0]) * 3600 + parseFloat(p[1]) * 60 + parseFloat(p[2]);
+        }
+
+        // --- 4. 同步與控制 ---
         function initPlayer(videoId) {
             if (player) {
                 player.loadVideoById(videoId);
@@ -181,14 +210,20 @@
             clearInterval(syncInterval);
             syncInterval = setInterval(() => {
                 const time = player.getCurrentTime();
-                const currentSub = subtitles.find(s => time >= s.start && time <= s.end);
-                document.getElementById('subtitleText').innerHTML = currentSub ? currentSub.text : "";
+                const cur = subtitles.find(s => time >= s.start && time <= s.end);
+                document.getElementById('subtitleText').innerHTML = cur ? cur.text : "";
+                updateTimerDisplay(time);
             }, 100);
         }
 
         function stopSync() { clearInterval(syncInterval); }
 
-        // 輔助工具
+        function updateTimerDisplay(sec) {
+            const m = Math.floor(sec / 60);
+            const s = (sec % 60).toFixed(1);
+            document.getElementById('timerDisplay').innerText = `${m}:${s.padStart(4, '0')}`;
+        }
+
         function extractVideoId(url) {
             const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             const match = url.match(regExp);
@@ -201,15 +236,12 @@
             tag.className = `px-3 py-1 rounded-full text-xs font-bold ${bg} ${color}`;
         }
 
-        function setBtnLoading(isLoading) {
-            const btn = document.getElementById('btnFetch');
-            btn.disabled = isLoading;
-            document.getElementById('btnText').innerText = isLoading ? "處理中..." : "抓取字幕";
+        function setLoading(l) {
+            document.getElementById('btnFetch').innerText = l ? "抓取中..." : "抓取字幕";
+            document.getElementById('btnFetch').disabled = l;
         }
 
-        function stopSync() { clearInterval(syncInterval); }
-
-        // 樣式連動
+        // 樣式控制
         document.getElementById('bgColor').onchange = (e) => document.getElementById('mainBody').style.backgroundColor = e.target.value;
         document.getElementById('fontSize').oninput = (e) => document.getElementById('subtitleText').style.fontSize = e.target.value + 'px';
         document.getElementById('toggleOBS').onclick = () => document.getElementById('mainBody').classList.add('obs-mode');

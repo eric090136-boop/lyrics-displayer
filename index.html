@@ -3,60 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBS 歌回字幕助手 Pro</title>
+    <title>OBS Subtitle Display Pro (Zero-Shift)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@900&display=swap');
         
-        body { font-family: 'Noto Sans TC', sans-serif; }
+        /* 強制隱藏全域捲軸，防止控制台內容過長導致畫面跳動 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; 
+            width: 100vw;
+            height: 100vh;
+            background-color: #000;
+        }
 
-        /* 字幕顯示區：固定在底層，不隨 UI 變動移動 */
-        #subtitle-layer {
+        /* --------------------------------------------------
+           核心隔離：底層輸出區域 (OBS 擷取此區域)
+           -------------------------------------------------- */
+        #output-layer {
             position: fixed;
-            inset: 0;
-            z-index: 10;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1; /* 永遠在最底層 */
             display: flex;
             align-items: center;
             justify-content: center;
-            pointer-events: none; /* 穿透點擊，不影響操作 */
             transition: background-color 0.3s ease;
         }
 
         .subtitle-text {
+            font-family: 'Noto Sans TC', sans-serif;
+            font-weight: 900;
+            text-align: center;
+            color: white;
             text-shadow: 
                 -4px -4px 0 #000, 4px -4px 0 #000, 
                 -4px  4px 0 #000, 4px  4px 0 #000,
-                0px 0px 20px rgba(0,0,0,0.8);
-            line-height: 1.4;
-            font-weight: 900;
-            text-align: center;
+                0px 0px 30px rgba(0,0,0,0.8);
+            line-height: 1.2;
+            padding: 0 10%;
+            pointer-events: none; /* 確保不會誤點 */
         }
 
-        /* 控制面板：右側懸浮抽屜 */
-        #control-panel {
+        /* --------------------------------------------------
+           頂層控制區域 (懸浮層)
+           -------------------------------------------------- */
+        #control-hud {
             position: fixed;
-            top: 1rem;
-            right: 1rem;
-            bottom: 1rem;
+            top: 20px;
+            right: 20px;
+            z-index: 999; /* 永遠在最頂層 */
             width: 380px;
-            z-index: 50;
-            background: rgba(31, 41, 55, 0.9);
-            backdrop-filter: blur(12px);
+            max-height: calc(100vh - 40px);
+            background: rgba(23, 23, 23, 0.9);
+            backdrop-filter: blur(15px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1.5rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
             display: flex;
             flex-direction: column;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
         }
 
-        .panel-hidden {
-            transform: translateX(calc(100% + 2rem));
+        .hud-hidden {
+            transform: translateX(420px);
             opacity: 0;
         }
 
-        /* 隱藏 YouTube 實體 */
-        #yt-player-container {
+        /* 控制台內部的滾動條 */
+        .hud-content {
+            padding: 24px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
+        .hud-content::-webkit-scrollbar { width: 6px; }
+        .hud-content::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+
+        /* 側邊切換按鈕 */
+        #hud-toggle {
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            z-index: 1000;
+            width: 45px;
+            height: 45px;
+            background: #4f46e5;
+            color: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
+            transition: all 0.2s;
+        }
+        #hud-toggle:hover { transform: scale(1.1); background: #4338ca; }
+
+        /* 隱藏 YouTube 播放器本體 */
+        #yt-player-host {
             position: absolute;
             width: 1px;
             height: 1px;
@@ -64,325 +112,279 @@
             pointer-events: none;
         }
 
-        /* 自定義滑桿樣式 */
-        input[type=range] { -webkit-appearance: none; background: #374151; border-radius: 999px; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid white; }
+        /* 改良滑桿樣式 */
+        input[type=range] { -webkit-appearance: none; background: #374151; height: 6px; border-radius: 5px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid #fff; }
 
-        /* OBS 專用樣式：當檢測到 OBS 參數或按下隱藏按鈕時 */
-        .obs-mode #control-panel, .obs-mode #toggle-btn { display: none !important; }
+        /* OBS 專用模式：按下按鈕後連齒輪都消失 */
+        .pure-output #hud-toggle, .pure-output #control-hud { display: none !important; }
     </style>
 </head>
-<body class="bg-black overflow-hidden">
+<body>
 
-    <div id="subtitle-layer" class="bg-[#00FF00]">
-        <div id="subtitleText" class="subtitle-text text-white px-8" style="font-size: 72px;">
-            等待載入設定...
+    <div id="output-layer" class="bg-[#00FF00]">
+        <div id="subtitle-box" class="subtitle-text" style="font-size: 80px;">
+            請設定影片與歌詞
         </div>
     </div>
 
-    <div id="yt-player-container">
+    <div id="yt-player-host">
         <div id="player"></div>
     </div>
 
-    <button id="toggle-btn" class="fixed top-6 right-6 z-[60] p-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-all">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-        </svg>
-    </button>
+    <div id="hud-toggle">⚙️</div>
 
-    <div id="control-panel" class="text-gray-100">
-        <div class="p-6 flex-1 overflow-y-auto space-y-6">
+    <div id="control-hud" class="hud-hidden">
+        <div class="hud-content space-y-6 text-gray-200">
             <div class="flex items-center justify-between border-b border-gray-700 pb-4">
-                <h2 class="text-xl font-bold text-indigo-400">控制台</h2>
-                <span id="status-tag" class="text-[10px] px-2 py-1 bg-gray-700 rounded-md">API 載入中</span>
+                <h2 class="text-lg font-bold text-white tracking-wider">控制面板</h2>
+                <div id="api-status" class="text-[10px] uppercase font-bold text-gray-500">API Loading...</div>
             </div>
 
-            <div class="space-y-3">
-                <label class="text-sm font-semibold text-gray-400">YouTube 網址</label>
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-tighter">YouTube 網址</label>
                 <div class="flex gap-2">
-                    <input type="text" id="ytUrl" placeholder="https://..." class="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <button id="btnLoadVideo" class="px-4 bg-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-700">載入</button>
+                    <input type="text" id="yt-url" placeholder="貼上網址或 ID" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 transition">
+                    <button id="btn-load-yt" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-bold transition">載入</button>
                 </div>
             </div>
 
-            <div class="space-y-3">
+            <div class="space-y-3 pt-2 border-t border-gray-800">
                 <div class="flex justify-between items-center">
-                    <label class="text-sm font-semibold text-gray-400">歌詞/字幕</label>
-                    <button id="btnFetchCC" class="text-xs text-indigo-400 hover:underline">嘗試抓取 CC</button>
+                    <label class="text-xs font-bold text-gray-400 uppercase">歌詞來源</label>
+                    <button id="btn-auto-cc" class="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold">自動抓取 CC</button>
                 </div>
-                <div id="cc-selector" class="hidden">
-                    <select id="trackSelect" class="w-full bg-gray-800 border border-indigo-500 rounded-lg p-2 text-xs"></select>
+                
+                <div id="cc-track-area" class="hidden">
+                    <select id="cc-track-select" class="w-full bg-gray-800 border border-indigo-900 rounded-lg p-2 text-xs text-indigo-200"></select>
                 </div>
-                <textarea id="manualText" rows="4" placeholder="貼入 LRC 或 SRT 字幕內容..." class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-xs font-mono outline-none focus:ring-2 focus:ring-purple-500"></textarea>
-                <button id="btnApplyLyrics" class="w-full py-2 bg-purple-600 rounded-lg text-sm font-bold hover:bg-purple-700 transition">應用歌詞</button>
+
+                <textarea id="manual-lyrics" rows="4" placeholder="在此貼入 LRC 或 SRT 歌詞..." class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-xs font-mono outline-none focus:border-purple-500 transition"></textarea>
+                
+                <button id="btn-apply-manual" class="w-full py-2.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-bold shadow-lg transition">應用歌詞內容</button>
             </div>
 
-            <div class="bg-gray-800/50 p-4 rounded-xl space-y-4">
-                <div class="flex justify-between items-baseline font-mono">
-                    <span id="currentTime" class="text-lg text-indigo-300">00:00</span>
-                    <span id="totalTime" class="text-xs text-gray-500">/ 00:00</span>
+            <div class="bg-black/30 p-4 rounded-xl space-y-4 border border-gray-800">
+                <div class="flex justify-between items-center">
+                    <span id="time-current" class="text-xl font-mono font-bold text-indigo-400">00:00</span>
+                    <span id="time-total" class="text-xs font-mono text-gray-600">/ 00:00</span>
                 </div>
-                <input type="range" id="progressSlider" min="0" value="0" step="0.1" class="w-full h-1.5">
-                <div class="grid grid-cols-3 gap-2">
-                    <button id="btnPlay" class="p-2 bg-emerald-600 rounded-md text-xs hover:bg-emerald-700 font-bold">播放</button>
-                    <button id="btnPause" class="p-2 bg-amber-600 rounded-md text-xs hover:bg-amber-700 font-bold">暫停</button>
-                    <button id="btnReset" class="p-2 bg-rose-600 rounded-md text-xs hover:bg-rose-700 font-bold">重置</button>
+                <input type="range" id="seek-slider" min="0" value="0" step="0.1" class="w-full">
+                
+                <div class="flex gap-2">
+                    <button id="btn-play" class="flex-1 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-600/50 rounded-lg font-bold text-xs hover:bg-emerald-600 hover:text-white transition">播放</button>
+                    <button id="btn-pause" class="flex-1 py-2 bg-amber-600/20 text-amber-400 border border-amber-600/50 rounded-lg font-bold text-xs hover:bg-amber-600 hover:text-white transition">暫停</button>
+                    <button id="btn-stop" class="flex-1 py-2 bg-rose-600/20 text-rose-400 border border-rose-600/50 rounded-lg font-bold text-xs hover:bg-rose-600 hover:text-white transition">重置</button>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div class="space-y-2">
-                    <label class="text-xs text-gray-400">字體大小 (px)</label>
-                    <input type="number" id="fontSize" value="72" class="w-full bg-gray-800 rounded-lg p-2 text-sm">
+            <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-800">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-500 uppercase">字體大小 (px)</label>
+                    <input type="number" id="style-font-size" value="80" class="w-full bg-gray-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-gray-400">
                 </div>
-                <div class="space-y-2">
-                    <label class="text-xs text-gray-400">色鍵底色</label>
-                    <select id="bgColor" class="w-full bg-gray-800 rounded-lg p-2 text-sm">
-                        <option value="#00FF00">綠色幕</option>
-                        <option value="#0000FF">藍色幕</option>
-                        <option value="#000000">黑色幕</option>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-500 uppercase">去背底色</label>
+                    <select id="style-bg-color" class="w-full bg-gray-800 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-gray-400">
+                        <option value="#00FF00">綠幕</option>
+                        <option value="#0000FF">藍幕</option>
+                        <option value="#000000">黑色</option>
                     </select>
                 </div>
             </div>
 
             <div class="space-y-2">
-                <label class="text-xs text-gray-400">音量</label>
-                <div class="flex items-center gap-3">
-                    <input type="range" id="volumeSlider" min="0" max="100" value="50" class="flex-1">
-                    <span id="volumeVal" class="text-xs font-mono w-8">50%</span>
+                <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                    <span>音量</span>
+                    <span id="vol-val">50%</span>
                 </div>
+                <input type="range" id="vol-slider" min="0" max="100" value="50" class="w-full">
             </div>
-        </div>
 
-        <div class="p-4 bg-gray-900/50">
-            <button id="enterObsMode" class="w-full py-3 bg-white text-gray-900 rounded-xl font-bold hover:bg-gray-200 transition active:scale-95">
-                隱藏面板 (Esc 恢復)
+            <button id="btn-pure-mode" class="w-full py-3 bg-white text-gray-900 rounded-xl font-black text-xs hover:bg-gray-200 transition active:scale-95 shadow-xl">
+                隱藏所有控制 UI (ESC 恢復)
             </button>
         </div>
     </div>
 
     <script>
-        // --- 1. 初始化變數 ---
-        let player = null;
-        let subtitles = [];
+        // --- 全域狀態 ---
+        let ytPlayer = null;
+        let subtitleData = [];
         let syncTimer = null;
-        let isDragging = false;
+        let isSeeking = false;
 
-        // --- 2. YouTube API 核心載入 (修正載入失敗問題) ---
+        // --- YouTube API 載入 (優化穩定性) ---
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        document.body.appendChild(tag);
 
-        window.onYouTubeIframeAPIReady = function() {
-            setStatus("API 就緒", "text-emerald-400");
-            // API 就緒後才綁定載入按鈕，避免 null 錯誤
-            document.getElementById('btnLoadVideo').addEventListener('click', loadVideo);
+        window.onYouTubeIframeAPIReady = () => {
+            document.getElementById('api-status').innerText = "API Ready";
+            document.getElementById('api-status').className = "text-[10px] uppercase font-bold text-emerald-500";
         };
 
-        function loadVideo() {
-            const url = document.getElementById('ytUrl').value;
-            const videoId = extractVideoId(url);
-            if (!videoId) return alert("請輸入正確的 YouTube ID 或網址");
+        // --- 核心邏輯：載入影片 ---
+        document.getElementById('btn-load-yt').onclick = () => {
+            const rawUrl = document.getElementById('yt-url').value;
+            const vId = parseVideoId(rawUrl);
+            if (!vId) return alert("無法辨識影片 ID");
 
-            if (player) {
-                player.loadVideoById(videoId);
+            if (ytPlayer) {
+                ytPlayer.loadVideoById(vId);
             } else {
-                player = new YT.Player('player', {
-                    videoId: videoId,
-                    playerVars: { 
-                        'playsinline': 1,
-                        'origin': window.location.origin
-                    },
+                ytPlayer = new YT.Player('player', {
+                    videoId: vId,
+                    playerVars: { 'origin': location.origin, 'playsinline': 1 },
                     events: {
-                        'onReady': onPlayerReady,
-                        'onStateChange': onPlayerStateChange
+                        'onReady': (e) => {
+                            e.target.setVolume(document.getElementById('vol-slider').value);
+                            updateDuration();
+                        },
+                        'onStateChange': (e) => {
+                            if (e.data == YT.PlayerState.PLAYING) {
+                                startSubtitleSync();
+                                updateDuration();
+                            } else {
+                                stopSubtitleSync();
+                            }
+                        }
                     }
                 });
             }
-        }
+        };
 
-        function onPlayerReady(event) {
-            setStatus("影片載入成功", "text-indigo-400");
-            event.target.setVolume(document.getElementById('volumeSlider').value);
-            updateTimeInfo();
-        }
-
-        function onPlayerStateChange(event) {
-            if (event.data == YT.PlayerState.PLAYING) {
-                startSync();
-                updateTimeInfo();
-            } else {
-                stopSync();
-            }
-        }
-
-        // --- 3. 同步與歌詞處理 ---
-        function startSync() {
-            stopSync();
-            syncTimer = setInterval(() => {
-                if (!player || isDragging || typeof player.getCurrentTime !== 'function') return;
-                const now = player.getCurrentTime();
-                
-                // 更新進度條
-                const slider = document.getElementById('progressSlider');
-                slider.value = now;
-                document.getElementById('currentTime').innerText = formatTime(now);
-
-                // 更新歌詞
-                const cur = subtitles.find(s => now >= s.start && now <= s.end);
-                document.getElementById('subtitleText').innerHTML = cur ? cur.text : "";
-            }, 100);
-        }
-
-        function stopSync() { clearInterval(syncTimer); }
-
-        function applyLyrics() {
-            const raw = document.getElementById('manualText').value;
-            if (!raw.trim()) return alert("內容不可為空");
+        // --- 歌詞解析與處理 ---
+        document.getElementById('btn-apply-manual').onclick = () => {
+            const text = document.getElementById('manual-lyrics').value;
+            if (!text.trim()) return;
             
-            subtitles = raw.includes('[') ? parseLRC(raw) : parseSRT(raw);
-            if (subtitles.length > 0) {
-                alert(`已應用 ${subtitles.length} 行歌詞`);
-            } else {
-                alert("解析失敗，請確認格式");
+            subtitleData = text.includes('[') ? parseLRC(text) : parseSRT(text);
+            if (subtitleData.length > 0) {
+                alert(`成功載入 ${subtitleData.length} 行歌詞`);
             }
-        }
-
-        // --- 4. 解析器與工具 ---
-        function parseLRC(lrc) {
-            const res = [];
-            lrc.split('\n').forEach(line => {
-                const parts = line.split(']');
-                const text = parts.pop().trim();
-                const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\]/);
-                if (match) {
-                    const s = parseInt(match[1])*60 + parseInt(match[2]) + parseInt(match[3])/(match[3].length===3?1000:100);
-                    res.push({ start: s, end: s + 4, text: text });
-                }
-            });
-            res.sort((a,b) => a.start - b.start);
-            for(let i=0; i<res.length-1; i++) res[i].end = res[i+1].start;
-            return res;
-        }
-
-        function parseSRT(srt) {
-            let res = []; let m;
-            const regex = /(\d+)\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}) --> (\d{2}:\d{2}:\d{2}[,\.]\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
-            while ((m = regex.exec(srt.replace(/\r/g, ""))) !== null) {
-                res.push({ 
-                    start: timeToSec(m[2]), 
-                    end: timeToSec(m[3]), 
-                    text: m[4].replace(/\n/g, "<br>") 
-                });
-            }
-            return res;
-        }
-
-        function timeToSec(t) {
-            const p = t.replace(',', '.').split(':');
-            return parseFloat(p[0]) * 3600 + parseFloat(p[1]) * 60 + parseFloat(p[2]);
-        }
-
-        function extractVideoId(url) {
-            const match = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
-            return (match && match[2].length === 11) ? match[2] : url;
-        }
-
-        function formatTime(s) {
-            const m = Math.floor(s/60);
-            const sec = Math.floor(s%60);
-            return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
-        }
-
-        function updateTimeInfo() {
-            if (player && player.getDuration) {
-                const total = player.getDuration();
-                document.getElementById('totalTime').innerText = "/ " + formatTime(total);
-                document.getElementById('progressSlider').max = total;
-            }
-        }
-
-        function setStatus(text, colorClass) {
-            const tag = document.getElementById('status-tag');
-            tag.innerText = text;
-            tag.className = `text-[10px] px-2 py-1 bg-gray-700 rounded-md ${colorClass}`;
-        }
-
-        // --- 5. 事件監聽綁定 ---
-        document.getElementById('toggle-btn').onclick = () => {
-            document.getElementById('control-panel').classList.toggle('panel-hidden');
         };
 
-        document.getElementById('btnPlay').onclick = () => player?.playVideo();
-        document.getElementById('btnPause').onclick = () => player?.pauseVideo();
-        document.getElementById('btnReset').onclick = () => { player?.seekTo(0); player?.pauseVideo(); };
-        document.getElementById('btnApplyLyrics').onclick = applyLyrics;
-
-        document.getElementById('volumeSlider').oninput = (e) => {
-            player?.setVolume(e.target.value);
-            document.getElementById('volumeVal').innerText = e.target.value + "%";
-        };
-
-        document.getElementById('progressSlider').onmousedown = () => isDragging = true;
-        document.getElementById('progressSlider').onmouseup = () => {
-            isDragging = false;
-            player?.seekTo(document.getElementById('progressSlider').value);
-        };
-
-        document.getElementById('bgColor').onchange = (e) => {
-            document.getElementById('subtitle-layer').style.backgroundColor = e.target.value;
-        };
-
-        document.getElementById('fontSize').oninput = (e) => {
-            document.getElementById('subtitleText').style.fontSize = e.target.value + 'px';
-        };
-
-        document.getElementById('enterObsMode').onclick = () => {
-            document.body.classList.add('obs-mode');
-        };
-
-        window.onkeydown = (e) => {
-            if (e.key === "Escape") document.body.classList.remove('obs-mode');
-        };
-
-        // 自動抓取 CC 邏輯 (維持 Proxy 方案)
-        document.getElementById('btnFetchCC').onclick = async () => {
-            const videoId = extractVideoId(document.getElementById('ytUrl').value);
-            if (!videoId) return alert("請先填入網址");
+        // 自動抓取邏輯 (Proxy 方案)
+        document.getElementById('btn-auto-cc').onclick = async () => {
+            const vId = parseVideoId(document.getElementById('yt-url').value);
+            if (!vId) return alert("請先填入 YouTube 網址");
+            
             try {
-                setStatus("抓取清單中...", "text-yellow-400");
-                const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/api/timedtext?v=${videoId}&type=list`)}`;
-                const res = await fetch(proxy);
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/api/timedtext?v=${vId}&type=list`)}`;
+                const res = await fetch(proxyUrl);
                 const data = await res.json();
                 const xml = new DOMParser().parseFromString(data.contents, "text/xml");
                 const tracks = xml.getElementsByTagName('track');
-                if (tracks.length === 0) throw new Error("影片未開啟 CC");
                 
-                const select = document.getElementById('trackSelect');
+                if (tracks.length === 0) throw new Error("此影片無 CC 字幕");
+                
+                const select = document.getElementById('cc-track-select');
                 select.innerHTML = "";
                 Array.from(tracks).forEach(t => select.add(new Option(t.getAttribute('lang_original'), t.getAttribute('lang_code'))));
-                document.getElementById('cc-selector').classList.remove('hidden');
+                document.getElementById('cc-track-area').classList.remove('hidden');
                 
-                // 載入第一個語言
-                fetchDetailedCC(videoId, tracks[0].getAttribute('lang_code'));
-            } catch (e) { alert(e.message); setStatus("抓取失敗", "text-rose-400"); }
+                fetchSubtitleContent(vId, tracks[0].getAttribute('lang_code'));
+            } catch (e) { alert(e.message); }
         };
 
-        async function fetchDetailedCC(vId, lang) {
+        async function fetchSubtitleContent(vId, lang) {
             const subUrl = `https://www.youtube.com/api/timedtext?v=${vId}&lang=${lang}&fmt=srv3`;
-            const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(subUrl)}`;
-            const res = await fetch(proxy);
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(subUrl)}`;
+            const res = await fetch(proxyUrl);
             const data = await res.json();
             const xml = new DOMParser().parseFromString(data.contents, "text/xml");
             const p = xml.getElementsByTagName('p');
-            subtitles = Array.from(p).map(n => ({
+            subtitleData = Array.from(p).map(n => ({
                 start: parseInt(n.getAttribute('t')) / 1000,
                 end: (parseInt(n.getAttribute('t')) + (parseInt(n.getAttribute('d')) || 2000)) / 1000,
                 text: n.textContent
             }));
-            setStatus("CC 載入完成", "text-emerald-400");
+            alert("CC 字幕同步完成");
         }
+
+        // --- 同步計時器 ---
+        function startSubtitleSync() {
+            clearInterval(syncTimer);
+            syncTimer = setInterval(() => {
+                if (!ytPlayer || isSeeking || typeof ytPlayer.getCurrentTime !== 'function') return;
+                const time = ytPlayer.getCurrentTime();
+                
+                // 更新 UI
+                document.getElementById('seek-slider').value = time;
+                document.getElementById('time-current').innerText = fmtTime(time);
+                
+                // 尋找字幕
+                const match = subtitleData.find(s => time >= s.start && time <= s.end);
+                document.getElementById('subtitle-box').innerHTML = match ? match.text : "";
+            }, 100);
+        }
+
+        function stopSubtitleSync() { clearInterval(syncTimer); }
+
+        // --- 工具函式 ---
+        function fmtTime(s) { const m = Math.floor(s/60); const sec = Math.floor(s%60); return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`; }
+        
+        function parseVideoId(url) {
+            const m = url.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+            return (m && m[2].length === 11) ? m[2] : url;
+        }
+
+        function updateDuration() {
+            if (ytPlayer && ytPlayer.getDuration) {
+                const d = ytPlayer.getDuration();
+                document.getElementById('time-total').innerText = "/ " + fmtTime(d);
+                document.getElementById('seek-slider').max = d;
+            }
+        }
+
+        function parseLRC(lrc) {
+            const lines = lrc.split('\n');
+            const res = [];
+            lines.forEach(line => {
+                const timeMatch = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\]/);
+                if (timeMatch) {
+                    const sec = parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]) + parseInt(timeMatch[3]) / (timeMatch[3].length === 3 ? 1000 : 100);
+                    const text = line.split(']').pop().trim();
+                    res.push({ start: sec, end: sec + 4, text: text });
+                }
+            });
+            res.sort((a, b) => a.start - b.start);
+            for (let i = 0; i < res.length - 1; i++) res[i].end = res[i+1].start;
+            return res;
+        }
+
+        function parseSRT(srt) {
+            const regex = /(\d+)\n(\d{2}:\d{2}:\d{2}[,\.]\d{3}) --> (\d{2}:\d{2}:\d{2}[,\.]\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
+            let res = []; let m;
+            while ((m = regex.exec(srt.replace(/\r/g, ""))) !== null) {
+                res.push({ start: s2s(m[2]), end: s2s(m[3]), text: m[4].replace(/\n/g, "<br>") });
+            }
+            return res;
+        }
+        function s2s(t) { const p = t.replace(',', '.').split(':'); return parseFloat(p[0]) * 3600 + parseFloat(p[1]) * 60 + parseFloat(p[2]); }
+
+        // --- UI 事件 ---
+        document.getElementById('hud-toggle').onclick = () => document.getElementById('control-hud').classList.toggle('hud-hidden');
+        document.getElementById('btn-play').onclick = () => ytPlayer?.playVideo();
+        document.getElementById('btn-pause').onclick = () => ytPlayer?.pauseVideo();
+        document.getElementById('btn-stop').onclick = () => { ytPlayer?.seekTo(0); ytPlayer?.pauseVideo(); };
+        
+        document.getElementById('seek-slider').onmousedown = () => isSeeking = true;
+        document.getElementById('seek-slider').onmouseup = () => { isSeeking = false; ytPlayer?.seekTo(document.getElementById('seek-slider').value); };
+        
+        document.getElementById('vol-slider').oninput = (e) => {
+            const v = e.target.value;
+            ytPlayer?.setVolume(v);
+            document.getElementById('vol-val').innerText = v + "%";
+        };
+
+        document.getElementById('style-font-size').oninput = (e) => document.getElementById('subtitle-box').style.fontSize = e.target.value + 'px';
+        document.getElementById('style-bg-color').onchange = (e) => document.getElementById('output-layer').style.backgroundColor = e.target.value;
+        
+        document.getElementById('btn-pure-mode').onclick = () => document.body.classList.add('pure-output');
+        window.onkeydown = (e) => { if (e.key === "Escape") document.body.classList.remove('pure-output'); };
+
     </script>
 </body>
 </html>
